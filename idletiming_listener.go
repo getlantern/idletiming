@@ -10,6 +10,11 @@ import (
 // Listener creates a net.Listener that wraps the connections obtained from an
 // original net.Listener with idle timing connections that time out after the
 // specified duration.
+//
+// idleTimeout specifies how long to wait for inactivity before considering
+// connection idle.
+//
+// onIdle is an optional function to call after the connection has been closed
 func Listener(listener net.Listener, idleTimeout time.Duration, onIdle func()) net.Listener {
 	return &idleTimingListener{listener, idleTimeout, onIdle}
 }
