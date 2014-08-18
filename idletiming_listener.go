@@ -1,5 +1,3 @@
-// package idletiming provides mechanisms for adding idle timeouts to net.Conn
-// and net.Listener.
 package idletiming
 
 import (
