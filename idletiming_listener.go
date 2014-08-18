@@ -1,0 +1,37 @@
+// package idletiming provides mechanisms for adding idle timeouts to net.Conn
+// and net.Listener.
+package idletiming
+
+import (
+	"net"
+	"time"
+)
+
+// Listener creates a net.Listener that wraps the connections obtained from an
+// original net.Listener with idle timing connections that time out after the
+// specified duration.
+func Listener(listener net.Listener, idleTimeout time.Duration, onIdle func()) net.Listener {
+	return &idleTimingListener{listener, idleTimeout, onIdle}
+}
+
+type idleTimingListener struct {
+	orig        net.Listener
+	idleTimeout time.Duration
+	onIdle      func()
+}
+
+func (l *idleTimingListener) Accept() (c net.Conn, err error) {
+	c, err = l.orig.Accept()
+	if err == nil {
+		c = Conn(c, l.idleTimeout, l.onIdle)
+	}
+	return
+}
+
+func (l *idleTimingListener) Close() error {
+	return l.orig.Close()
+}
+
+func (l *idleTimingListener) Addr() net.Addr {
+	return l.orig.Addr()
+}

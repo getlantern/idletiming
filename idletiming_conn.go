@@ -7,45 +7,14 @@ import (
 	"time"
 )
 
-// IdleTimingListener wraps the connections obtained from a regular net.Listener
-// with idle timing connections that time out after the specified duration.
-type IdleTimingListener struct {
-	// Orig is the original net.Listener to wrap
-	Orig net.Listener
-
-	// IdleTimeout is the period after which conenctions from this listener are
-	// timed out if idle.
-	IdleTimeout time.Duration
-
-	// OnIdle is an optional callback that is invoked whenever a connection from
-	// this IdleTimingListener is idled.
-	OnIdle func()
-}
-
-func (l *IdleTimingListener) Accept() (c net.Conn, err error) {
-	c, err = l.Orig.Accept()
-	if err == nil {
-		c = WithIdleTimeout(c, l.IdleTimeout, l.OnIdle)
-	}
-	return
-}
-
-func (l *IdleTimingListener) Close() error {
-	return l.Orig.Close()
-}
-
-func (l *IdleTimingListener) Addr() net.Addr {
-	return l.Orig.Addr()
-}
-
-// WithIdleTimeout creates a new net.Conn wrapping the given net.Conn that times
-// out after the specified period.
+// Conn creates a new net.Conn wrapping the given net.Conn that times out after
+// the specified period.
 //
 // idleTimeout specifies how long to wait for inactivity before considering
 // connection idle.
 //
 // onIdle is an optional function to call after the connection has been closed
-func WithIdleTimeout(conn net.Conn, idleTimeout time.Duration, onIdle func()) net.Conn {
+func Conn(conn net.Conn, idleTimeout time.Duration, onIdle func()) net.Conn {
 	c := &idleTimingConn{
 		conn:             conn,
 		idleTimeout:      idleTimeout,

@@ -17,13 +17,9 @@ func Test(t *testing.T) {
 		t.Fatalf("Unable to listen at %s: %s", addr, err)
 	}
 
-	il := &IdleTimingListener{
-		Orig:        l,
-		IdleTimeout: timeout,
-		OnIdle: func() {
-			listenerIdled = true
-		},
-	}
+	il := Listener(l, timeout, func() {
+		listenerIdled = true
+	})
 
 	go func() {
 		il.Accept()
@@ -34,7 +30,7 @@ func Test(t *testing.T) {
 		t.Fatalf("Unable to dial %s: %s", addr, err)
 	}
 
-	WithIdleTimeout(c, timeout, func() {
+	Conn(c, timeout, func() {
 		connIdled = true
 	})
 
