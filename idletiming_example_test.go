@@ -6,7 +6,7 @@ import (
 	"time"
 )
 
-func ExampleDial() {
+func ExampleWithIdleTimeout() {
 	c, err := net.Dial("tcp", "127.0.0.1:8080")
 	if err != nil {
 		log.Fatalf("Unable to dial %s", err)
@@ -19,7 +19,7 @@ func ExampleDial() {
 	ic.Write([]byte("My data"))
 }
 
-func ExampleListen() {
+func ExampleIdleTimingListener() {
 	l, err := net.Listen("tcp", "127.0.0.1:8080")
 	if err != nil {
 		log.Fatalf("Unable to listen %s", err)
