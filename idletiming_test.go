@@ -44,12 +44,12 @@ func TestWrite(t *testing.T) {
 		}()
 	}()
 
-	c, err := net.Dial("tcp", addr)
+	conn, err := net.Dial("tcp", addr)
 	if err != nil {
 		t.Fatalf("Unable to dial %s: %s", addr, err)
 	}
 
-	c = Conn(c, clientTimeout, func() {
+	c := Conn(conn, clientTimeout, func() {
 		connIdled = true
 	})
 
@@ -76,6 +76,11 @@ func TestWrite(t *testing.T) {
 	time.Sleep(slightlyMoreThanClientTimeout)
 	if connIdled == false {
 		t.Errorf("Conn failed to idle!")
+	}
+
+	connTimesOutIn := c.TimesOutIn()
+	if connTimesOutIn > 0 {
+		t.Errorf("TimesOutIn returned bad value, should have been negative, but was: %s", connTimesOutIn)
 	}
 
 	time.Sleep(slightlyMoreThanClientTimeout)

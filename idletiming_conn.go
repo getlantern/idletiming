@@ -16,13 +16,14 @@ import (
 //
 // onClose is an optional function to call after the connection has been closed,
 // whether or not that was due to the connection idling.
-func Conn(conn net.Conn, idleTimeout time.Duration, onClose func()) net.Conn {
-	c := &idleTimingConn{
-		conn:            conn,
-		idleTimeout:     idleTimeout,
-		halfIdleTimeout: time.Duration(idleTimeout.Nanoseconds() / 2),
-		activeCh:        make(chan bool),
-		closedCh:        make(chan bool, 10),
+func Conn(conn net.Conn, idleTimeout time.Duration, onClose func()) *IdleTimingConn {
+	c := &IdleTimingConn{
+		conn:             conn,
+		idleTimeout:      idleTimeout,
+		halfIdleTimeout:  time.Duration(idleTimeout.Nanoseconds() / 2),
+		activeCh:         make(chan bool),
+		closedCh:         make(chan bool, 10),
+		lastActivityTime: time.Now(),
 	}
 
 	go func() {
@@ -37,9 +38,10 @@ func Conn(conn net.Conn, idleTimeout time.Duration, onClose func()) net.Conn {
 			case <-c.activeCh:
 				// We're active, continue
 				timer.Reset(idleTimeout)
+				c.lastActivityTime = time.Now()
 				continue
 			case <-timer.C:
-				c.Close()
+				//c.Close()
 				return
 			case <-c.closedCh:
 				c.Close()
@@ -51,19 +53,27 @@ func Conn(conn net.Conn, idleTimeout time.Duration, onClose func()) net.Conn {
 	return c
 }
 
-// idleTimingConn is a net.Conn that wraps another net.Conn and that times out
+// IdleTimingConn is a net.Conn that wraps another net.Conn and that times out
 // if idle for more than idleTimeout.
-type idleTimingConn struct {
-	conn            net.Conn
-	idleTimeout     time.Duration
-	halfIdleTimeout time.Duration
-	readDeadline    *time.Time
-	writeDeadline   *time.Time
-	activeCh        chan bool
-	closedCh        chan bool
+type IdleTimingConn struct {
+	conn             net.Conn
+	idleTimeout      time.Duration
+	halfIdleTimeout  time.Duration
+	readDeadline     *time.Time
+	writeDeadline    *time.Time
+	activeCh         chan bool
+	closedCh         chan bool
+	lastActivityTime time.Time
 }
 
-func (c *idleTimingConn) Read(b []byte) (int, error) {
+// TimesOutIn returns how much time is left before this connection will timeout,
+// assuming there is no further activity.
+func (c *IdleTimingConn) TimesOutIn() time.Duration {
+	return c.lastActivityTime.Add(c.idleTimeout).Sub(time.Now())
+}
+
+// Read implements the method from io.Reader
+func (c *IdleTimingConn) Read(b []byte) (int, error) {
 	totalN := 0
 	// Continually read while we can, always setting a deadline that's less than
 	// our idleTimeout so that we can update our active status before we hit the
@@ -91,7 +101,8 @@ func (c *idleTimingConn) Read(b []byte) (int, error) {
 	}
 }
 
-func (c *idleTimingConn) Write(b []byte) (int, error) {
+// Write implements the method from io.Reader
+func (c *IdleTimingConn) Write(b []byte) (int, error) {
 	totalN := 0
 	// Continually write while we can, always setting a deadline that's less
 	// than our idleTimeout so that we can update our active status before we
@@ -119,36 +130,36 @@ func (c *idleTimingConn) Write(b []byte) (int, error) {
 	}
 }
 
-func (c *idleTimingConn) Close() error {
+func (c *IdleTimingConn) Close() error {
 	c.closedCh <- true
 	return c.conn.Close()
 }
 
-func (c *idleTimingConn) LocalAddr() net.Addr {
+func (c *IdleTimingConn) LocalAddr() net.Addr {
 	return c.conn.LocalAddr()
 }
 
-func (c *idleTimingConn) RemoteAddr() net.Addr {
+func (c *IdleTimingConn) RemoteAddr() net.Addr {
 	return c.conn.RemoteAddr()
 }
 
-func (c *idleTimingConn) SetDeadline(t time.Time) error {
+func (c *IdleTimingConn) SetDeadline(t time.Time) error {
 	c.SetReadDeadline(t)
 	c.SetWriteDeadline(t)
 	return nil
 }
 
-func (c *idleTimingConn) SetReadDeadline(t time.Time) error {
+func (c *IdleTimingConn) SetReadDeadline(t time.Time) error {
 	c.readDeadline = &t
 	return nil
 }
 
-func (c *idleTimingConn) SetWriteDeadline(t time.Time) error {
+func (c *IdleTimingConn) SetWriteDeadline(t time.Time) error {
 	c.writeDeadline = &t
 	return nil
 }
 
-func (c *idleTimingConn) markActive(n int) bool {
+func (c *IdleTimingConn) markActive(n int) bool {
 	if n > 0 {
 		c.activeCh <- true
 		return true
