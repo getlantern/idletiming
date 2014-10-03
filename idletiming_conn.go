@@ -21,7 +21,7 @@ func Conn(conn net.Conn, idleTimeout time.Duration, onClose func()) *IdleTimingC
 		conn:             conn,
 		idleTimeout:      idleTimeout,
 		halfIdleTimeout:  time.Duration(idleTimeout.Nanoseconds() / 2),
-		activeCh:         make(chan bool),
+		activeCh:         make(chan bool, 10),
 		closedCh:         make(chan bool, 10),
 		lastActivityTime: time.Now(),
 	}
@@ -93,7 +93,12 @@ func (c *IdleTimingConn) Read(b []byte) (int, error) {
 			n, err := c.conn.Read(b)
 			c.markActive(n)
 			totalN = totalN + n
-			if n == 0 || !isTimeout(err) {
+			timedOut := isTimeout(err)
+			if timedOut {
+				// Ignore timeouts when using deadline based on IdleTimeout
+				err = nil
+			}
+			if n == 0 || !timedOut {
 				return totalN, err
 			}
 			b = b[n:]
@@ -122,7 +127,12 @@ func (c *IdleTimingConn) Write(b []byte) (int, error) {
 			n, err := c.conn.Write(b)
 			c.markActive(n)
 			totalN = totalN + n
-			if n == 0 || !isTimeout(err) {
+			timedOut := isTimeout(err)
+			if timedOut {
+				// Ignore timeouts when using deadline based on IdleTimeout
+				err = nil
+			}
+			if n == 0 || !timedOut {
 				return totalN, err
 			}
 			b = b[n:]
