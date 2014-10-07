@@ -66,10 +66,16 @@ type IdleTimingConn struct {
 	lastActivityTime time.Time
 }
 
-// TimesOutIn returns how much time is left before this connection will timeout,
-// assuming there is no further activity.
+// TimesOutIn returns how much time is left before this connection will time
+// out, assuming there is no further activity.
 func (c *IdleTimingConn) TimesOutIn() time.Duration {
-	return c.lastActivityTime.Add(c.idleTimeout).Sub(time.Now())
+	return c.TimesOutAt().Sub(time.Now())
+}
+
+// TimesOutAt returns the time at which this connection will time out, assuming
+// there is no further activity
+func (c *IdleTimingConn) TimesOutAt() time.Time {
+	return c.lastActivityTime.Add(c.idleTimeout)
 }
 
 // Read implements the method from io.Reader
