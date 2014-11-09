@@ -4,6 +4,7 @@ package idletiming
 
 import (
 	"net"
+	"sync/atomic"
 	"time"
 )
 
@@ -23,7 +24,7 @@ func Conn(conn net.Conn, idleTimeout time.Duration, onClose func()) *IdleTimingC
 		halfIdleTimeout:  time.Duration(idleTimeout.Nanoseconds() / 2),
 		activeCh:         make(chan bool, 10),
 		closedCh:         make(chan bool, 10),
-		lastActivityTime: time.Now(),
+		lastActivityTime: int64(time.Now().Nanosecond()),
 	}
 
 	go func() {
@@ -38,7 +39,7 @@ func Conn(conn net.Conn, idleTimeout time.Duration, onClose func()) *IdleTimingC
 			case <-c.activeCh:
 				// We're active, continue
 				timer.Reset(idleTimeout)
-				c.lastActivityTime = time.Now()
+				atomic.StoreInt64(&c.lastActivityTime, int64(time.Now().Nanosecond()))
 				continue
 			case <-timer.C:
 				//c.Close()
@@ -63,7 +64,7 @@ type IdleTimingConn struct {
 	writeDeadline    *time.Time
 	activeCh         chan bool
 	closedCh         chan bool
-	lastActivityTime time.Time
+	lastActivityTime int64
 }
 
 // TimesOutIn returns how much time is left before this connection will time
@@ -75,7 +76,7 @@ func (c *IdleTimingConn) TimesOutIn() time.Duration {
 // TimesOutAt returns the time at which this connection will time out, assuming
 // there is no further activity
 func (c *IdleTimingConn) TimesOutAt() time.Time {
-	return c.lastActivityTime.Add(c.idleTimeout)
+	return time.Unix(0, c.lastActivityTime).Add(c.idleTimeout)
 }
 
 // Read implements the method from io.Reader

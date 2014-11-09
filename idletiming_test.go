@@ -5,6 +5,7 @@ import (
 	"io/ioutil"
 	"log"
 	"net"
+	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -21,8 +22,8 @@ var (
 )
 
 func TestWrite(t *testing.T) {
-	listenerIdled := false
-	connIdled := false
+	listenerIdled := int32(0)
+	connIdled := int32(0)
 
 	l, err := net.Listen("tcp", "localhost:0")
 	if err != nil {
@@ -31,7 +32,7 @@ func TestWrite(t *testing.T) {
 
 	addr := l.Addr().String()
 	il := Listener(l, serverTimeout, func() {
-		listenerIdled = true
+		atomic.StoreInt32(&listenerIdled, 1)
 		log.Printf("Listener idled")
 	})
 
@@ -54,7 +55,7 @@ func TestWrite(t *testing.T) {
 	conn = &slowConn{orig: conn, targetDuration: slightlyLessThanClientTimeout}
 
 	c := Conn(conn, clientTimeout, func() {
-		connIdled = true
+		atomic.StoreInt32(&connIdled, 1)
 	})
 
 	// Write messages
@@ -78,7 +79,7 @@ func TestWrite(t *testing.T) {
 	}
 
 	time.Sleep(slightlyMoreThanClientTimeout)
-	if connIdled == false {
+	if connIdled == 0 {
 		t.Errorf("Conn failed to idle!")
 	}
 
@@ -88,14 +89,14 @@ func TestWrite(t *testing.T) {
 	}
 
 	time.Sleep(9 * slightlyMoreThanClientTimeout)
-	if listenerIdled == false {
+	if listenerIdled == 0 {
 		t.Errorf("Listener failed to idle!")
 	}
 }
 
 func TestRead(t *testing.T) {
-	listenerIdled := false
-	connIdled := false
+	listenerIdled := int32(0)
+	connIdled := int32(0)
 
 	l, err := net.Listen("tcp", "localhost:0")
 	if err != nil {
@@ -103,7 +104,7 @@ func TestRead(t *testing.T) {
 	}
 
 	il := Listener(l, serverTimeout, func() {
-		listenerIdled = true
+		atomic.StoreInt32(&listenerIdled, 1)
 	})
 
 	addr := l.Addr().String()
@@ -133,7 +134,7 @@ func TestRead(t *testing.T) {
 	c = &slowConn{orig: c, targetDuration: slightlyLessThanClientTimeout}
 
 	c = Conn(c, clientTimeout, func() {
-		connIdled = true
+		atomic.StoreInt32(&connIdled, 1)
 	})
 
 	// Read messages
@@ -164,12 +165,12 @@ func TestRead(t *testing.T) {
 	}
 
 	time.Sleep(slightlyMoreThanClientTimeout)
-	if connIdled == false {
+	if connIdled == 0 {
 		t.Errorf("Conn failed to idle!")
 	}
 
 	time.Sleep(9 * slightlyMoreThanClientTimeout)
-	if listenerIdled == false {
+	if listenerIdled == 0 {
 		t.Errorf("Listener failed to idle!")
 	}
 }
