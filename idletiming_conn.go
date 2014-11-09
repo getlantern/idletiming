@@ -24,7 +24,7 @@ func Conn(conn net.Conn, idleTimeout time.Duration, onClose func()) *IdleTimingC
 		halfIdleTimeout:  time.Duration(idleTimeout.Nanoseconds() / 2),
 		activeCh:         make(chan bool, 10),
 		closedCh:         make(chan bool, 10),
-		lastActivityTime: int64(time.Now().Nanosecond()),
+		lastActivityTime: int64(time.Now().UnixNano()),
 	}
 
 	go func() {
@@ -39,7 +39,7 @@ func Conn(conn net.Conn, idleTimeout time.Duration, onClose func()) *IdleTimingC
 			case <-c.activeCh:
 				// We're active, continue
 				timer.Reset(idleTimeout)
-				atomic.StoreInt64(&c.lastActivityTime, int64(time.Now().Nanosecond()))
+				atomic.StoreInt64(&c.lastActivityTime, time.Now().UnixNano())
 				continue
 			case <-timer.C:
 				//c.Close()
