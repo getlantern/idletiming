@@ -143,7 +143,7 @@ func TestRead(t *testing.T) {
 	for i := 0; i < dataLoops; i++ {
 		n, err := c.Read(b)
 		if err != nil {
-			t.Fatalf("Problem reading.  err: %s", n, err)
+			t.Fatalf("Problem reading. Read %d bytes, err: %s", n, err)
 		}
 		totalN += n
 		time.Sleep(slightlyLessThanClientTimeout)
