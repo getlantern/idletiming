@@ -28,7 +28,7 @@ func Conn(conn net.Conn, idleTimeout time.Duration, onIdle func()) *IdleTimingCo
 	}
 
 	c := &IdleTimingConn{
-		conn:             conn,
+		Conn:             conn,
 		idleTimeout:      idleTimeout,
 		halfIdleTimeout:  time.Duration(idleTimeout.Nanoseconds() / 2),
 		activeCh:         make(chan bool, 1),
@@ -61,7 +61,7 @@ func Conn(conn net.Conn, idleTimeout time.Duration, onIdle func()) *IdleTimingCo
 // IdleTimingConn is a net.Conn that wraps another net.Conn and that times out
 // if idle for more than idleTimeout.
 type IdleTimingConn struct {
-	conn             net.Conn
+	net.Conn
 	idleTimeout      time.Duration
 	halfIdleTimeout  time.Duration
 	readDeadline     int64
@@ -95,15 +95,15 @@ func (c *IdleTimingConn) Read(b []byte) (int, error) {
 		maxDeadline := time.Now().Add(c.halfIdleTimeout)
 		if readDeadline != epoch && !maxDeadline.Before(readDeadline) {
 			// Caller's deadline is before ours, use it
-			c.conn.SetReadDeadline(readDeadline)
-			n, err := c.conn.Read(b)
+			c.Conn.SetReadDeadline(readDeadline)
+			n, err := c.Conn.Read(b)
 			c.markActive(n)
 			totalN = totalN + n
 			return totalN, err
 		} else {
 			// Use our own deadline
-			c.conn.SetReadDeadline(maxDeadline)
-			n, err := c.conn.Read(b)
+			c.Conn.SetReadDeadline(maxDeadline)
+			n, err := c.Conn.Read(b)
 			c.markActive(n)
 			totalN = totalN + n
 			hitMaxDeadline := isTimeout(err) && !time.Now().Before(maxDeadline)
@@ -132,15 +132,15 @@ func (c *IdleTimingConn) Write(b []byte) (int, error) {
 		maxDeadline := time.Now().Add(c.halfIdleTimeout)
 		if writeDeadline != epoch && !maxDeadline.Before(writeDeadline) {
 			// Caller's deadline is before ours, use it
-			c.conn.SetWriteDeadline(writeDeadline)
-			n, err := c.conn.Write(b)
+			c.Conn.SetWriteDeadline(writeDeadline)
+			n, err := c.Conn.Write(b)
 			c.markActive(n)
 			totalN = totalN + n
 			return totalN, err
 		} else {
 			// Use our own deadline
-			c.conn.SetWriteDeadline(maxDeadline)
-			n, err := c.conn.Write(b)
+			c.Conn.SetWriteDeadline(maxDeadline)
+			n, err := c.Conn.Write(b)
 			c.markActive(n)
 			totalN = totalN + n
 			hitMaxDeadline := isTimeout(err) && !time.Now().Before(maxDeadline)
@@ -166,15 +166,15 @@ func (c *IdleTimingConn) Close() error {
 	default:
 		// already closing, ignore
 	}
-	return c.conn.Close()
+	return c.Conn.Close()
 }
 
 func (c *IdleTimingConn) LocalAddr() net.Addr {
-	return c.conn.LocalAddr()
+	return c.Conn.LocalAddr()
 }
 
 func (c *IdleTimingConn) RemoteAddr() net.Addr {
-	return c.conn.RemoteAddr()
+	return c.Conn.RemoteAddr()
 }
 
 func (c *IdleTimingConn) SetDeadline(t time.Time) error {
