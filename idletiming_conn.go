@@ -169,14 +169,6 @@ func (c *IdleTimingConn) Close() error {
 	return c.Conn.Close()
 }
 
-func (c *IdleTimingConn) LocalAddr() net.Addr {
-	return c.Conn.LocalAddr()
-}
-
-func (c *IdleTimingConn) RemoteAddr() net.Addr {
-	return c.Conn.RemoteAddr()
-}
-
 func (c *IdleTimingConn) SetDeadline(t time.Time) error {
 	c.SetReadDeadline(t)
 	c.SetWriteDeadline(t)
