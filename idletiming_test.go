@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/getlantern/fdcount"
+	"github.com/stretchr/testify/assert"
 )
 
 var (
@@ -39,9 +40,6 @@ func TestWrite(t *testing.T) {
 	addr := l.Addr().String()
 	il := Listener(l, serverTimeout, func(conn net.Conn) {
 		atomic.StoreInt32(&listenerIdled, 1)
-		if err := conn.Close(); err != nil {
-			t.Errorf("Unable to close connection: %v", err)
-		}
 	})
 	defer func() {
 		if err := il.Close(); err != nil {
@@ -76,9 +74,6 @@ func TestWrite(t *testing.T) {
 
 	c := Conn(conn, clientTimeout, func() {
 		atomic.StoreInt32(&connIdled, 1)
-		if err := conn.Close(); err != nil {
-			t.Fatalf("Unable to close connection: %v", err)
-		}
 	})
 
 	// Write messages
@@ -103,9 +98,15 @@ func TestWrite(t *testing.T) {
 	}
 
 	time.Sleep(slightlyMoreThanClientTimeout)
-	if connIdled == 0 {
+	if atomic.LoadInt32(&connIdled) == 0 {
 		t.Errorf("Conn failed to idle!")
 	}
+
+	time.Sleep(slightlyMoreThanClientTimeout)
+	_, err = c.Write(make([]byte, 10))
+	assert.Equal(t, io.EOF, err, "1st write after idle should return io.EOF")
+	_, err = c.Write(make([]byte, 10))
+	assert.Equal(t, ErrIdled, err, "2nd write after idle should return ErrIdled")
 
 	connTimesOutIn := c.TimesOutIn()
 	if connTimesOutIn > 0 {
@@ -113,7 +114,7 @@ func TestWrite(t *testing.T) {
 	}
 
 	time.Sleep(9 * slightlyMoreThanClientTimeout)
-	if listenerIdled == 0 {
+	if atomic.LoadInt32(&listenerIdled) == 0 {
 		t.Errorf("Listener failed to idle!")
 	}
 }
@@ -124,8 +125,8 @@ func TestRead(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	listenerIdled := int32(0)
 	connIdled := int32(0)
+	listenerIdled := int32(0)
 
 	l, err := net.Listen("tcp", "localhost:0")
 	if err != nil {
@@ -134,9 +135,6 @@ func TestRead(t *testing.T) {
 
 	il := Listener(l, serverTimeout, func(conn net.Conn) {
 		atomic.StoreInt32(&listenerIdled, 1)
-		if err := conn.Close(); err != nil {
-			t.Fatalf("Unable to close connection: %v", err)
-		}
 	})
 	defer func() {
 		if err := il.Close(); err != nil {
@@ -176,9 +174,6 @@ func TestRead(t *testing.T) {
 
 	c := Conn(conn, clientTimeout, func() {
 		atomic.StoreInt32(&connIdled, 1)
-		if err := conn.Close(); err != nil {
-			t.Fatalf("Unable to close connection: %v", err)
-		}
 	})
 
 	// Read messages (we use a buffer matching the message size to make sure
@@ -211,12 +206,16 @@ func TestRead(t *testing.T) {
 	}
 
 	time.Sleep(slightlyMoreThanClientTimeout)
-	if connIdled == 0 {
+	if atomic.LoadInt32(&connIdled) == 0 {
 		t.Errorf("Conn failed to idle!")
 	}
+	_, err = c.Read(make([]byte, 10))
+	assert.Equal(t, io.EOF, err, "1st read after idle should return io.EOF")
+	_, err = c.Read(make([]byte, 10))
+	assert.Equal(t, ErrIdled, err, "2nd read after idle should return ErrIdled")
 
 	time.Sleep(9 * slightlyMoreThanClientTimeout)
-	if listenerIdled == 0 {
+	if atomic.LoadInt32(&listenerIdled) == 0 {
 		t.Errorf("Listener failed to idle!")
 	}
 }
