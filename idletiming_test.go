@@ -251,6 +251,39 @@ func TestClose(t *testing.T) {
 	}
 }
 
+func TestDeadline(t *testing.T) {
+	l, err := net.Listen("tcp", "localhost:0")
+	if err != nil {
+		t.Fatalf("Unable to listen: %s", err)
+	}
+	defer l.Close()
+	go func() {
+		conn, err := l.Accept()
+		if err != nil {
+			t.Fatalf("Unable to accept: %s", err)
+		}
+		go func() {
+			if _, err := io.Copy(conn, conn); err != nil {
+				t.Fatalf("Unable to discard data: %v", err)
+			}
+		}()
+	}()
+
+	addr := l.Addr().String()
+	conn, err := net.Dial("tcp", addr)
+	if err != nil {
+		t.Fatalf("Unable to dial %s: %s", addr, err)
+	}
+
+	c := Conn(conn, 100*time.Millisecond, nil)
+	c.SetDeadline(time.Time{})
+	var buf [1]byte
+	_, err = c.Write(buf[:])
+	assert.NoError(t, err, "should write to idletiming conn")
+	_, err = c.Read(buf[:])
+	assert.NoError(t, err, "should read from idletiming conn")
+}
+
 // slowConn wraps a net.Conn and ensures that Writes and Reads take
 // TargetDuration.
 type slowConn struct {

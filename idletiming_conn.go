@@ -14,8 +14,7 @@ import (
 )
 
 var (
-	epoch = time.Unix(0, 0)
-	log   = golog.LoggerFor("idletiming")
+	log = golog.LoggerFor("idletiming")
 
 	// ErrIdled is return when attempting to use a network connection that was
 	// closed because of idling.
@@ -69,11 +68,11 @@ func Conn(conn net.Conn, idleTimeout time.Duration, onIdle func()) *IdleTimingCo
 // IdleTimingConn is a net.Conn that wraps another net.Conn and that times out
 // if idle for more than idleTimeout.
 type IdleTimingConn struct {
-	// Keep them at the top to make sure 64-bit alignment, see
+	// Keep it at the top to make sure 64-bit alignment, see
 	// https://golang.org/pkg/sync/atomic/#pkg-note-BUG
-	readDeadline     int64
-	writeDeadline    int64
 	lastActivityTime int64
+	readDeadline     guardedTime
+	writeDeadline    guardedTime
 
 	conn             net.Conn
 	idleTimeout      time.Duration
@@ -107,14 +106,14 @@ func (c *IdleTimingConn) Read(b []byte) (int, error) {
 	}
 
 	totalN := 0
-	readDeadline := time.Unix(0, atomic.LoadInt64(&c.readDeadline))
+	readDeadline := c.readDeadline.Get()
 
 	// Continually read while we can, always setting a deadline that's less than
 	// our idleTimeout so that we can update our active status before we hit the
 	// idleTimeout.
 	for {
 		maxDeadline := time.Now().Add(c.halfIdleTimeout)
-		if readDeadline != epoch && !maxDeadline.Before(readDeadline) {
+		if !readDeadline.IsZero() && !maxDeadline.Before(readDeadline) {
 			// Caller's deadline is before ours, use it
 			if err := c.conn.SetReadDeadline(readDeadline); err != nil {
 				log.Tracef("Unable to set read deadline: %v", err)
@@ -155,14 +154,14 @@ func (c *IdleTimingConn) Write(b []byte) (int, error) {
 	}
 
 	totalN := 0
-	writeDeadline := time.Unix(0, atomic.LoadInt64(&c.writeDeadline))
+	writeDeadline := c.writeDeadline.Get()
 
 	// Continually write while we can, always setting a deadline that's less
 	// than our idleTimeout so that we can update our active status before we
 	// hit the idleTimeout.
 	for {
 		maxDeadline := time.Now().Add(c.halfIdleTimeout)
-		if writeDeadline != epoch && !maxDeadline.Before(writeDeadline) {
+		if !writeDeadline.IsZero() && !maxDeadline.Before(writeDeadline) {
 			// Caller's deadline is before ours, use it
 			if err := c.conn.SetWriteDeadline(writeDeadline); err != nil {
 				log.Tracef("Unable to set write deadline: %v", err)
@@ -253,7 +252,7 @@ func (c *IdleTimingConn) SetReadDeadline(t time.Time) error {
 		return err
 	}
 
-	atomic.StoreInt64(&c.readDeadline, t.UnixNano())
+	c.readDeadline.Set(t)
 	return nil
 }
 
@@ -265,7 +264,7 @@ func (c *IdleTimingConn) SetWriteDeadline(t time.Time) error {
 		return err
 	}
 
-	atomic.StoreInt64(&c.writeDeadline, t.UnixNano())
+	c.writeDeadline.Set(t)
 	return nil
 }
 
@@ -301,4 +300,22 @@ func isTimeout(err error) bool {
 		return netErr.Timeout()
 	}
 	return false
+}
+
+type guardedTime struct {
+	sync.RWMutex
+	t time.Time
+}
+
+func (g *guardedTime) Get() time.Time {
+	g.RLock()
+	retval := g.t
+	g.RUnlock()
+	return retval
+}
+
+func (g *guardedTime) Set(t time.Time) {
+	g.Lock()
+	g.t = t
+	g.Unlock()
 }
