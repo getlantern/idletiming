@@ -79,8 +79,7 @@ type IdleTimingConn struct {
 	halfIdleTimeout  time.Duration
 	activeCh         chan bool
 	closedCh         chan bool
-	closeMutex       sync.RWMutex // prevents Close() from interfering with io operations
-	closed           bool
+	closed           int32
 	hasReadAfterIdle int32
 }
 
@@ -98,9 +97,6 @@ func (c *IdleTimingConn) TimesOutAt() time.Time {
 
 // Read implements the method from io.Reader
 func (c *IdleTimingConn) Read(b []byte) (int, error) {
-	c.closeMutex.RLock()
-	defer c.closeMutex.RUnlock()
-
 	if err := c.checkClosedFirstTime(&c.hasReadAfterIdle, io.EOF); err != nil {
 		return 0, err
 	}
@@ -146,9 +142,6 @@ func (c *IdleTimingConn) Read(b []byte) (int, error) {
 
 // Write implements the method from io.Reader
 func (c *IdleTimingConn) Write(b []byte) (int, error) {
-	c.closeMutex.RLock()
-	defer c.closeMutex.RUnlock()
-
 	if err := c.checkClosed(); err != nil {
 		return 0, err
 	}
@@ -195,14 +188,11 @@ func (c *IdleTimingConn) Write(b []byte) (int, error) {
 // Close this IdleTimingConn. This will close the underlying net.Conn as well,
 // returning the error from calling its Close method.
 func (c *IdleTimingConn) Close() error {
-	c.closeMutex.Lock()
-	defer c.closeMutex.Unlock()
-
 	if err := c.checkClosed(); err != nil {
 		return err
 	}
 
-	c.closed = true
+	atomic.StoreInt32(&c.closed, 1)
 
 	select {
 	case c.closedCh <- true:
@@ -214,23 +204,14 @@ func (c *IdleTimingConn) Close() error {
 }
 
 func (c *IdleTimingConn) LocalAddr() net.Addr {
-	c.closeMutex.RLock()
-	defer c.closeMutex.RUnlock()
-
 	return c.conn.LocalAddr()
 }
 
 func (c *IdleTimingConn) RemoteAddr() net.Addr {
-	c.closeMutex.RLock()
-	defer c.closeMutex.RUnlock()
-
 	return c.conn.RemoteAddr()
 }
 
 func (c *IdleTimingConn) SetDeadline(t time.Time) error {
-	c.closeMutex.RLock()
-	defer c.closeMutex.RUnlock()
-
 	if err := c.checkClosed(); err != nil {
 		return err
 	}
@@ -245,9 +226,6 @@ func (c *IdleTimingConn) SetDeadline(t time.Time) error {
 }
 
 func (c *IdleTimingConn) SetReadDeadline(t time.Time) error {
-	c.closeMutex.RLock()
-	defer c.closeMutex.RUnlock()
-
 	if err := c.checkClosed(); err != nil {
 		return err
 	}
@@ -257,9 +235,6 @@ func (c *IdleTimingConn) SetReadDeadline(t time.Time) error {
 }
 
 func (c *IdleTimingConn) SetWriteDeadline(t time.Time) error {
-	c.closeMutex.RLock()
-	defer c.closeMutex.RUnlock()
-
 	if err := c.checkClosed(); err != nil {
 		return err
 	}
@@ -286,7 +261,7 @@ func (c *IdleTimingConn) checkClosed() error {
 }
 
 func (c *IdleTimingConn) checkClosedFirstTime(hasDone *int32, firstTimeError error) error {
-	if c.closed {
+	if atomic.LoadInt32(&c.closed) == 1 {
 		if hasDone != nil && atomic.CompareAndSwapInt32(hasDone, 0, 1) {
 			return firstTimeError
 		}
