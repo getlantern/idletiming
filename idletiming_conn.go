@@ -263,6 +263,11 @@ func (c *IdleTimingConn) SetWriteDeadline(t time.Time) error {
 	return nil
 }
 
+// Wrapped implements the interface netx.WrappedConn
+func (c *IdleTimingConn) Wrapped() net.Conn {
+	return c.conn
+}
+
 func (c *IdleTimingConn) markActive(n int) bool {
 	if n > 0 {
 		select {
