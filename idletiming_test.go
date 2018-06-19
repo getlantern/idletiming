@@ -204,7 +204,7 @@ func TestRead(t *testing.T) {
 	}
 
 	time.Sleep(slightlyMoreThanClientTimeout)
-	if atomic.LoadInt32(&connIdled) == 0 {
+	if !IsIdled(c) {
 		t.Errorf("Conn failed to idle!")
 	}
 	_, err = c.Read(make([]byte, 10))
