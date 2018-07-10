@@ -86,21 +86,22 @@ func Conn(conn net.Conn, idleTimeout time.Duration, onIdle func()) *IdleTimingCo
 // IdleTimingConn is a net.Conn that wraps another net.Conn and that times out
 // if idle for more than idleTimeout.
 type IdleTimingConn struct {
-	// Keep it at the top to make sure 64-bit alignment, see
+	// Keep 64-bit words at the top to make sure 64-bit alignment, see
 	// https://golang.org/pkg/sync/atomic/#pkg-note-BUG
 	lastActivityTime uint64
-	readDeadline     guardedTime
-	writeDeadline    guardedTime
-
-	conn             net.Conn
-	idleTimeout      time.Duration
-	halfIdleTimeout  time.Duration
-	activeCh         chan bool
-	closedCh         chan bool
-	closeMutex       sync.RWMutex // prevents Close() from interfering with io operations
-	closed           bool
 	idled            int64
 	hasReadAfterIdle int32
+
+	readDeadline  guardedTime
+	writeDeadline guardedTime
+
+	conn            net.Conn
+	idleTimeout     time.Duration
+	halfIdleTimeout time.Duration
+	activeCh        chan bool
+	closedCh        chan bool
+	closeMutex      sync.RWMutex // prevents Close() from interfering with io operations
+	closed          bool
 }
 
 // TimesOutIn returns how much time is left before this connection will time
@@ -161,7 +162,7 @@ func (c *IdleTimingConn) doRead(b []byte) (int, error) {
 	}
 }
 
-// Write implements the method from io.Reader
+// Write implements the method from io.Writer
 func (c *IdleTimingConn) Write(b []byte) (int, error) {
 	c.closeMutex.RLock()
 	n, err := c.doWrite(b)
