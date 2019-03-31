@@ -64,6 +64,9 @@ func Conn(conn net.Conn, idleTimeout time.Duration, onIdle func()) *IdleTimingCo
 			select {
 			case <-c.activeCh:
 				// We're active, continue
+				if !timer.Stop() {
+					<-timer.C
+				}
 				timer.Reset(idleTimeout)
 				atomic.StoreUint64(&c.lastActivityTime, uint64(mtime.Now()))
 				continue
