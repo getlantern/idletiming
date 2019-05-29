@@ -111,6 +111,20 @@ func TestWrite(t *testing.T) {
 		t.Errorf("TimesOutIn returned bad value, should have been negative, but was: %s", connTimesOutIn)
 	}
 
+	// Dial again to check error on reading from closed conn
+	conn, err = net.Dial("tcp", addr)
+	if err != nil {
+		t.Fatalf("Unable to dial %s: %s", addr, err)
+	}
+	c = Conn(conn, clientTimeout, func() {
+		atomic.StoreInt32(&connIdled, 1)
+	})
+	c.Close()
+	_, err = c.Read(make([]byte, 10))
+	assert.NotEqual(t, ErrIdled, err)
+	_, err = c.Read(make([]byte, 10))
+	assert.NotEqual(t, ErrIdled, err)
+
 	time.Sleep(9 * slightlyMoreThanClientTimeout)
 	if atomic.LoadInt32(&listenerIdled) == 0 {
 		t.Errorf("Listener failed to idle!")
