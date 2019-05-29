@@ -332,7 +332,7 @@ func (c *IdleTimingConn) checkClosed() error {
 }
 
 func (c *IdleTimingConn) checkClosedFirstTime(hasDone *int32, firstTimeError error) error {
-	if c.closed {
+	if c.closed && atomic.LoadInt64(&c.idled) == 1 {
 		if hasDone != nil && atomic.CompareAndSwapInt32(hasDone, 0, 1) {
 			return firstTimeError
 		}
