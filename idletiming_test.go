@@ -217,6 +217,13 @@ func TestRead(t *testing.T) {
 		t.Fatalf("Short deadline should have resulted in net.Error, but didn't: %s", err)
 	}
 
+	unpause := c.Pause()
+	time.Sleep(slightlyMoreThanClientTimeout)
+	if IsIdled(c) {
+		t.Errorf("Conn should not have idled while paused!")
+	}
+	
+	unpause()
 	time.Sleep(slightlyMoreThanClientTimeout)
 	if !IsIdled(c) {
 		t.Errorf("Conn failed to idle!")
