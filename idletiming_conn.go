@@ -318,14 +318,21 @@ func (c *IdleTimingConn) Wrapped() net.Conn {
 func (c *IdleTimingConn) Pause() func() {
 	ticker := time.NewTicker(c.halfIdleTimeout)
 
+	done := make(chan bool)
 	go func() {
-		for range ticker.C {
-			c.markActive(1)
+		for {
+			select {
+			case <-ticker.C:
+				c.markActive(1)
+			case <-done:
+				ticker.Stop()
+				return
+			}
 		}
 	}()
 
 	return func() {
-		ticker.Stop()
+		close(done)
 	}
 }
 

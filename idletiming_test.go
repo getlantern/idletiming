@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/getlantern/fdcount"
+	"github.com/getlantern/grtrack"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -217,13 +218,16 @@ func TestRead(t *testing.T) {
 		t.Fatalf("Short deadline should have resulted in net.Error, but didn't: %s", err)
 	}
 
+	grtracker := grtrack.Start()
 	unpause := c.Pause()
 	time.Sleep(slightlyMoreThanClientTimeout)
 	if IsIdled(c) {
 		t.Errorf("Conn should not have idled while paused!")
 	}
-	
+
 	unpause()
+	grtracker.Check(t)
+
 	time.Sleep(slightlyMoreThanClientTimeout)
 	if !IsIdled(c) {
 		t.Errorf("Conn failed to idle!")
