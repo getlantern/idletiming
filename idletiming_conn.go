@@ -15,6 +15,10 @@ import (
 	"github.com/getlantern/netx"
 )
 
+const (
+	maxIOTimeout = 1 * time.Second
+)
+
 var (
 	log = golog.LoggerFor("idletiming")
 
@@ -55,6 +59,10 @@ func Conn(conn net.Conn, idleTimeout time.Duration, onIdle func()) *IdleTimingCo
 		activeCh:         make(chan bool, 1),
 		closedCh:         make(chan bool, 1),
 		lastActivityTime: uint64(mtime.Now()),
+	}
+	c.maxIOTimeout = maxIOTimeout
+	if c.halfIdleTimeout < maxIOTimeout {
+		c.maxIOTimeout = c.halfIdleTimeout
 	}
 
 	go func() {
@@ -101,6 +109,7 @@ type IdleTimingConn struct {
 	conn            net.Conn
 	idleTimeout     time.Duration
 	halfIdleTimeout time.Duration
+	maxIOTimeout    time.Duration
 	activeCh        chan bool
 	closedCh        chan bool
 	closeMutex      sync.RWMutex // prevents Close() from interfering with io operations
@@ -133,7 +142,7 @@ func (c *IdleTimingConn) doRead(b []byte) (int, error) {
 	// our idleTimeout so that we can update our active status before we hit the
 	// idleTimeout.
 	for {
-		maxDeadline := time.Now().Add(c.halfIdleTimeout)
+		maxDeadline := time.Now().Add(c.maxIOTimeout)
 		if !readDeadline.IsZero() && !maxDeadline.Before(readDeadline) {
 			// Caller's deadline is before ours, use it
 			if err := c.conn.SetReadDeadline(readDeadline); err != nil {
@@ -185,7 +194,7 @@ func (c *IdleTimingConn) doWrite(b []byte) (int, error) {
 	// than our idleTimeout so that we can update our active status before we
 	// hit the idleTimeout.
 	for {
-		maxDeadline := time.Now().Add(c.halfIdleTimeout)
+		maxDeadline := time.Now().Add(c.maxIOTimeout)
 		if !writeDeadline.IsZero() && !maxDeadline.Before(writeDeadline) {
 			// Caller's deadline is before ours, use it
 			if err := c.conn.SetWriteDeadline(writeDeadline); err != nil {
@@ -235,6 +244,7 @@ func (c *IdleTimingConn) Close() error {
 	default:
 		// already closing, ignore
 	}
+
 	return c.conn.Close()
 }
 
