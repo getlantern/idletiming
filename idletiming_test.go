@@ -269,8 +269,16 @@ func TestClose(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Unable to dial %s: %s", addr, err)
 	}
+	rdic := &readDeadlineIgnoringConn{conn}
 
-	c := Conn(conn, clientTimeout, func() {})
+	c := Conn(rdic, clientTimeout, func() {})
+	go func() {
+		b := make([]byte, 10)
+		n, err := c.Read(b)
+		t.Logf("Read result: %d %v", n, err)
+	}()
+
+	time.Sleep(100 * time.Millisecond)
 	for i := 0; i < 100; i++ {
 		_ = c.Close()
 	}
@@ -394,4 +402,12 @@ func (e timeoutError) Timeout() bool {
 
 func (e timeoutError) Temporary() bool {
 	return true
+}
+
+type readDeadlineIgnoringConn struct {
+	net.Conn
+}
+
+func (conn *readDeadlineIgnoringConn) SetReadDeadline(deadline time.Time) error {
+	return nil
 }
