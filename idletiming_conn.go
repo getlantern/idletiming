@@ -18,9 +18,13 @@ import (
 var (
 	log = golog.LoggerFor("idletiming")
 
-	// ErrIdled is return when attempting to use a network connection that was
+	// ErrIdled is returned when attempting to use a network connection that was
 	// closed because of idling.
 	ErrIdled = errors.New("Use of idled network connection")
+
+	// ErrClosed is returned when attempting to use a network connections that was
+	// already manually closed.
+	ErrClosed = errors.New("Use of closed network connection")
 )
 
 // IsIdled indicates whether the given conn represents an idletiming conn that
@@ -53,7 +57,7 @@ func Conn(conn net.Conn, idleTimeout time.Duration, onIdle func()) *IdleTimingCo
 		idleTimeout:      idleTimeout,
 		halfIdleTimeout:  time.Duration(idleTimeout.Nanoseconds() / 2),
 		activeCh:         make(chan bool, 1),
-		closedCh:         make(chan bool, 1),
+		closedCh:         make(chan interface{}),
 		lastActivityTime: uint64(mtime.Now()),
 	}
 
@@ -102,9 +106,8 @@ type IdleTimingConn struct {
 	idleTimeout     time.Duration
 	halfIdleTimeout time.Duration
 	activeCh        chan bool
-	closedCh        chan bool
-	closeMutex      sync.RWMutex // prevents Close() from interfering with io operations
-	closed          bool
+	closedCh        chan interface{}
+	closeMutex      sync.Mutex
 }
 
 // TimesOutIn returns how much time is left before this connection will time
@@ -115,13 +118,6 @@ func (c *IdleTimingConn) TimesOutIn() time.Duration {
 
 // Read implements the method from io.Reader
 func (c *IdleTimingConn) Read(b []byte) (int, error) {
-	c.closeMutex.RLock()
-	n, err := c.doRead(b)
-	c.closeMutex.RUnlock()
-	return n, err
-}
-
-func (c *IdleTimingConn) doRead(b []byte) (int, error) {
 	if err := c.checkClosedFirstTime(&c.hasReadAfterIdle, io.EOF); err != nil {
 		return 0, err
 	}
@@ -167,13 +163,6 @@ func (c *IdleTimingConn) doRead(b []byte) (int, error) {
 
 // Write implements the method from io.Writer
 func (c *IdleTimingConn) Write(b []byte) (int, error) {
-	c.closeMutex.RLock()
-	n, err := c.doWrite(b)
-	c.closeMutex.RUnlock()
-	return n, err
-}
-
-func (c *IdleTimingConn) doWrite(b []byte) (int, error) {
 	if err := c.checkClosed(); err != nil {
 		return 0, err
 	}
@@ -227,14 +216,7 @@ func (c *IdleTimingConn) Close() error {
 		return err
 	}
 
-	c.closed = true
-
-	select {
-	case c.closedCh <- true:
-		// close accepted
-	default:
-		// already closing, ignore
-	}
+	close(c.closedCh)
 	return c.conn.Close()
 }
 
@@ -243,27 +225,16 @@ func (c *IdleTimingConn) Idled() bool {
 }
 
 func (c *IdleTimingConn) LocalAddr() net.Addr {
-	c.closeMutex.RLock()
 	addr := c.conn.LocalAddr()
-	c.closeMutex.RUnlock()
 	return addr
 }
 
 func (c *IdleTimingConn) RemoteAddr() net.Addr {
-	c.closeMutex.RLock()
 	addr := c.conn.RemoteAddr()
-	c.closeMutex.RUnlock()
 	return addr
 }
 
 func (c *IdleTimingConn) SetDeadline(t time.Time) error {
-	c.closeMutex.RLock()
-	err := c.doSetDeadline(t)
-	c.closeMutex.RUnlock()
-	return err
-}
-
-func (c *IdleTimingConn) doSetDeadline(t time.Time) error {
 	if err := c.checkClosed(); err != nil {
 		return err
 	}
@@ -278,13 +249,6 @@ func (c *IdleTimingConn) doSetDeadline(t time.Time) error {
 }
 
 func (c *IdleTimingConn) SetReadDeadline(t time.Time) error {
-	c.closeMutex.RLock()
-	err := c.doSetReadDeadline(t)
-	c.closeMutex.RUnlock()
-	return err
-}
-
-func (c *IdleTimingConn) doSetReadDeadline(t time.Time) error {
 	if err := c.checkClosed(); err != nil {
 		return err
 	}
@@ -294,13 +258,6 @@ func (c *IdleTimingConn) doSetReadDeadline(t time.Time) error {
 }
 
 func (c *IdleTimingConn) SetWriteDeadline(t time.Time) error {
-	c.closeMutex.RLock()
-	err := c.doSetWriteDeadline(t)
-	c.closeMutex.RUnlock()
-	return err
-}
-
-func (c *IdleTimingConn) doSetWriteDeadline(t time.Time) error {
 	if err := c.checkClosed(); err != nil {
 		return err
 	}
@@ -354,11 +311,17 @@ func (c *IdleTimingConn) checkClosed() error {
 }
 
 func (c *IdleTimingConn) checkClosedFirstTime(hasDone *int32, firstTimeError error) error {
-	if c.closed && atomic.LoadInt64(&c.idled) == 1 {
-		if hasDone != nil && atomic.CompareAndSwapInt32(hasDone, 0, 1) {
-			return firstTimeError
+	select {
+	case <-c.closedCh:
+		if atomic.LoadInt64(&c.idled) == 1 {
+			if hasDone != nil && atomic.CompareAndSwapInt32(hasDone, 0, 1) {
+				return firstTimeError
+			}
+			return ErrIdled
 		}
-		return ErrIdled
+		return ErrClosed
+	default:
+		// not closed
 	}
 	return nil
 }
